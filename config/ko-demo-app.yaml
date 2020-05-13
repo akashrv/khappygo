@@ -1,0 +1,205 @@
+# 1. Face Detection service - Pigo
+# This will be triggered by an event coming from CLoud Storage Source
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pigo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: pigo
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: pigo
+          image: ko://github.com/owulveryck/khappygo/21_apps/pigo
+          env:
+          - name: BROKER
+            value: "http://default-broker.octo-demo.svc.cluster.local"
+          - name: CASCADE_FILE
+            value: "gs://aerobic-botany-270918/models/facefinder"
+          - name: ANGLE
+            value: "0.0"
+          - name: IOUTHRESHOLD
+            value: "0.01"
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /var/secrets/google/key.json
+          volumeMounts:
+            - name: google-cloud-key
+              mountPath: /var/secrets/google
+      volumes:
+        - name: google-cloud-key
+          secret:
+            secretName: google-cloud-key
+---
+# Service pointing at the previous Deployment. This will be the target for event
+# consumption.
+  kind: Service
+  apiVersion: v1
+  metadata:
+    name: pigo-service
+  spec:
+    selector:
+      app: pigo
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# 2. Image extraction will extract faces from the image
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-extractor
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: image-extractor
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: image-extractor
+          image: ko://github.com/owulveryck/khappygo/21_apps/image-extractor
+          env:
+            - name: DEST
+              value: "gs://octo-demo-faces/"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/key.json
+          volumeMounts:
+            - name: google-cloud-key
+              mountPath: /var/secrets/google
+      volumes:
+        - name: google-cloud-key
+          secret:
+            secretName: google-cloud-key
+---
+# Service pointing at the previous Deployment. This will be the target for event
+# consumption.
+  kind: Service
+  apiVersion: v1
+  metadata:
+    name: image-extractor-service
+  spec:
+    selector:
+      app: image-extractor
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# 3. Emotion service extracts emotions from faces
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emotion
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: emotion
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: emotion
+          image: ko://github.com/owulveryck/khappygo/21_apps/emotion
+          env:
+          - name: MODEL
+            value: "gs://aerobic-botany-270918/models/emotions.onnx"
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /var/secrets/google/key.json
+          volumeMounts:
+            - name: google-cloud-key
+              mountPath: /var/secrets/google
+      volumes:
+        - name: google-cloud-key
+          secret:
+            secretName: google-cloud-key
+---
+# Service pointing at the previous Deployment. This will be the target for event
+# consumption.
+  kind: Service
+  apiVersion: v1
+  metadata:
+    name: emotion-service
+  spec:
+    selector:
+      app: emotion
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# 4. Report service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: report
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: report
+          image: ko://github.com/owulveryck/khappygo/21_apps/report
+---
+# Service pointing at the previous Deployment. This will be the target for event
+# consumption.
+  kind: Service
+  apiVersion: v1
+  metadata:
+    name: report-service
+  spec:
+    selector:
+      app: report
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# UI
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: ui
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: ui
+          image: ko://github.com/owulveryck/khappygo/21_apps/ui
+          env:
+          - name: BUCKET
+            value: "gs://octo-demo-processed"
+---
+# Service pointing at the previous Deployment. This will be the target for event
+# consumption.
+  kind: Service
+  apiVersion: v1
+  metadata:
+    name: ui-service
+  spec:
+    selector:
+      app: ui
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

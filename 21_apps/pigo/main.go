@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"image"
 	"io"
 	"io/ioutil"
@@ -19,6 +19,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/owulveryck/khappygo/common/box"
 	"github.com/owulveryck/khappygo/common/kclient"
+	storageschema "google.golang.org/api/storage/v1"
 )
 
 type configuration struct {
@@ -40,6 +41,8 @@ var (
 )
 
 func main() {
+	log.Println("This is new pigo!")
+
 	err := envconfig.Process("", &config)
 	if err != nil {
 		log.Fatal(envconfig.Usage("", &config))
@@ -103,20 +106,23 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to create client, ", err)
 	}
-	log.Println("pigo is listening for events")
+	log.Println("new pigo is listening for events")
 
 	log.Fatal(kreceiver.StartReceiver(context.Background(), receive))
 }
 
 func receive(ctx context.Context, event cloudevents.Event, response *cloudevents.EventResponse) error {
 	log.Println(event)
-	var imgPath string
-	err := event.DataAs(&imgPath)
+	data := storageschema.Object{}
+	err := event.DataAs(&data)
 	if err != nil {
-		log.Println(err)
-		response.Error(http.StatusBadRequest, "expected data to be a string")
-		return errors.New("expected data to be a string")
+		newErr := fmt.Errorf("Error converting event.Data  to google.golang.org/api/storage/v1/storage.object. %s", err.Error())
+		log.Println(newErr.Error())
+		response.Error(http.StatusBadRequest, newErr.Error())
+		return newErr
 	}
+	imgPath := getObjectURI(data.Bucket, data.Name)
+
 	log.Println(imgPath)
 	rc, err := getElement(ctx, imgPath)
 	if err != nil {
@@ -197,4 +203,7 @@ func getElement(ctx context.Context, imgPath string) (io.ReadCloser, error) {
 		return os.Open(imageURL.Host + imageURL.Path)
 	}
 	return nil, nil
+}
+func getObjectURI(bucketID string, objectID string) string {
+	return fmt.Sprintf("gs://%s/%s", bucketID, objectID)
 }
